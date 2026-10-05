@@ -6,7 +6,7 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 2 of 10 complete — API defined in protobuf, Go code generated with buf, CI checking lint, proto and build. See [Roadmap](#roadmap).
+> **Status:** Milestone 3 of 10 complete — service rules implemented test-first against an in-memory store; CI runs unit tests with the race detector and coverage. See [Roadmap](#roadmap).
 
 ---
 
@@ -39,7 +39,7 @@ curl localhost:8080/healthz   # → ok
 | `make reset` | Stop the stack and wipe the database |
 | `make logs` | Follow server logs |
 | `make psql` | SQL shell on the app database |
-| `make test` | Run all Go test layers in a container *(from milestone 3)* |
+| `make test` | Run all Go test layers in a container |
 | `make load` | Run the k6 baseline against the stack *(from milestone 8)* |
 | `make proto-deps` | Resolve proto dependencies and update `buf.lock` |
 | `make proto-lint` | Lint and format-check the proto files |
@@ -93,11 +93,27 @@ One protobuf file ([`proto/results/v1/results.proto`](proto/results/v1/results.p
 
 ---
 
+## Service rules
+
+Implemented in [`internal/service`](internal/service), which has no gRPC, HTTP or SQL in it. Transports call it; stores implement its `Store` interface.
+
+| Operation | Rule |
+| --- | --- |
+| Create run | Suite, branch and commit SHA are required |
+| Record results | Batch must hold 1–1,000 results; an unknown run is not found |
+| Record results | A result with an empty name, unknown status or negative duration is rejected on its own; valid results in the same batch are still stored |
+| Get run | Returns pass, fail and skip counts computed from stored results |
+| List runs | Newest first, optional suite filter; page size 0 means 20, above 100 is capped at 100; page tokens are opaque |
+
+Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status codes in the transport layer.
+
+---
+
 ## Test strategy
 
 | Layer | Runs against | Covers |
 | --- | --- | --- |
-| Unit (TDD) | In-memory fake store | Validation, partial-batch acceptance, pagination rules |
+| Unit (TDD) ✅ | In-memory store ([`internal/memstore`](internal/memstore)) | Validation, partial-batch acceptance, pagination rules — 93% coverage |
 | Integration | Real Postgres (testcontainers-go / test container) | Queries, constraints, migrations |
 | gRPC API | Running service | Every RPC, status codes, streaming, deadlines |
 | REST API | Running service over HTTP | Same behaviours via the gateway, HTTP status mapping |
@@ -119,8 +135,8 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · goose · testcontainers-go 
 | --- | --- | --- |
 | 1 | Skeleton — stub server, Docker stack, CI | ✅ Done |
 | 2 | Proto and codegen with buf | ✅ Done |
-| 3 | Service logic, test-first | ⬜ Next |
-| 4 | Postgres store and migrations | ⬜ |
+| 3 | Service logic, test-first | ✅ Done |
+| 4 | Postgres store and migrations | ⬜ Next |
 | 5 | gRPC server | ⬜ |
 | 6 | REST gateway | ⬜ |
 | 7 | Reliability tests | ⬜ |
