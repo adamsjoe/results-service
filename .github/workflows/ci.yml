@@ -34,8 +34,26 @@ jobs:
           format: true
           push: false # breaking runs on pull requests against the base branch
 
-  build:
+  test:
     needs: [lint, proto]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Unit tests (race detector, coverage)
+        run: go test -race -count=1 -coverpkg=./internal/... -coverprofile=coverage.out ./...
+      - name: Coverage summary
+        run: go tool cover -func=coverage.out | tail -1
+      - name: Upload coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage.out
+
+  build:
+    needs: [test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
