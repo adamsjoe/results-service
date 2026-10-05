@@ -6,7 +6,7 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 6 of 10 complete — the same API over gRPC (port 9090) and REST/JSON (port 8080), backed by Postgres; one shared test table holds both protocols to identical behaviour. See [Roadmap](#roadmap).
+> **Status:** Milestone 7 of 10 complete — reliability proven against real Postgres: database outages return Unavailable/503 and recover without a restart, abandoned writes leave nothing behind, SIGTERM drains in-flight requests, and fuzzing finds no input that causes a 5xx. See [Roadmap](#roadmap).
 
 ---
 
@@ -147,7 +147,8 @@ Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status
 | REST API ✅ | Real gateway over HTTP ([`test/api`](test/api)) | Same behaviours as gRPC from one shared case table, plus JSON shape, bad bodies, error format, routing |
 | Contract | Proto file | `buf lint` and `buf breaking` against main |
 | Load | Docker Compose stack | k6 throughput and latency, both protocols |
-| Reliability | Running service | Timeouts, cancellation, database loss, graceful shutdown |
+| Reliability ✅ | Real Postgres, in-process servers and the real binary ([`test/reliability`](test/reliability)) | Database outage → Unavailable/503 then recovery without restart; deadline mid-write leaves nothing stored; SIGTERM refuses new HTTP but finishes the in-flight write and exits 0 |
+| Fuzz ✅ | Service and REST gateway | Random page tokens and request bodies: never a panic, never a 5xx. Seeds run on every `go test` |
 
 ---
 
@@ -167,8 +168,8 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 · 
 | 4 | Postgres store and migrations | ✅ Done |
 | 5 | gRPC server | ✅ Done |
 | 6 | REST gateway | ✅ Done |
-| 7 | Reliability tests | ⬜ Next |
-| 8 | Load tests (k6) | ⬜ |
+| 7 | Reliability tests | ✅ Done |
+| 8 | Load tests (k6) | ⬜ Next |
 | 9 | Grafana dashboard | ⬜ |
 | 10 | README: results and write-up | ⬜ |
 
