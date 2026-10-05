@@ -6,13 +6,15 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 1 of 10 complete — skeleton service running in Docker with CI. See [Roadmap](#roadmap).
+> **Status:** Milestone 2 of 10 complete — API defined in protobuf, Go code generated with buf, CI checking lint, proto and build. See [Roadmap](#roadmap).
 
 ---
 
 ## Quick start
 
 **Prerequisites:** Docker Engine with Compose v2, and `make`. No local Go toolchain is needed to run the stack.
+
+To develop: Go (version per `go.mod`) and [buf](https://buf.build/docs/installation) (`go install github.com/bufbuild/buf/cmd/buf@v1.73.0`). Generated code in `gen/` is committed, so buf is only needed when the proto changes.
 
 ```bash
 git clone https://github.com/adamsjoe/results-service.git
@@ -39,6 +41,9 @@ curl localhost:8080/healthz   # → ok
 | `make psql` | SQL shell on the app database |
 | `make test` | Run all Go test layers in a container *(from milestone 3)* |
 | `make load` | Run the k6 baseline against the stack *(from milestone 8)* |
+| `make proto-deps` | Resolve proto dependencies and update `buf.lock` |
+| `make proto-lint` | Lint and format-check the proto files |
+| `make proto` | Regenerate Go code into `gen/` |
 
 ---
 
@@ -74,9 +79,9 @@ The server binary has three subcommands so one image does every job:
 
 ---
 
-## Planned API
+## API
 
-One protobuf file (`proto/results/v1/results.proto`) defines the API; the REST layer is generated from it.
+One protobuf file ([`proto/results/v1/results.proto`](proto/results/v1/results.proto)) defines the API; buf generates the Go message types, gRPC stubs and REST gateway into `gen/`. Handlers are implemented from milestone 5.
 
 | RPC | REST | Notes |
 | --- | --- | --- |
@@ -113,8 +118,8 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · goose · testcontainers-go 
 | # | Milestone | Status |
 | --- | --- | --- |
 | 1 | Skeleton — stub server, Docker stack, CI | ✅ Done |
-| 2 | Proto and codegen with buf | ⬜ Next |
-| 3 | Service logic, test-first | ⬜ |
+| 2 | Proto and codegen with buf | ✅ Done |
+| 3 | Service logic, test-first | ⬜ Next |
 | 4 | Postgres store and migrations | ⬜ |
 | 5 | gRPC server | ⬜ |
 | 6 | REST gateway | ⬜ |
