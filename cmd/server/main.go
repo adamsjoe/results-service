@@ -2,7 +2,7 @@
 //
 // Subcommands:
 //
-//	serve        start the HTTP server (default)
+//	serve        start the gRPC and HTTP servers (default)
 //	healthcheck  call /healthz and exit 0 if healthy, 1 if not
 //	migrate      apply database migrations from DATABASE_URL
 package main
@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,7 +20,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/adamsjoe/results-service/internal/service"
 	"github.com/adamsjoe/results-service/internal/store"
+	"github.com/adamsjoe/results-service/internal/transport"
 )
 
 func main() {
@@ -48,50 +51,88 @@ func main() {
 	}
 }
 
-// httpAddr returns the listen address from HTTP_ADDR, defaulting to :8080.
-func httpAddr() string {
-	if addr := os.Getenv("HTTP_ADDR"); addr != "" {
-		return addr
+func env(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
-	return ":8080"
+	return fallback
 }
 
-// serve runs the HTTP server until SIGINT or SIGTERM, then shuts down gracefully.
+func httpAddr() string { return env("HTTP_ADDR", ":8080") }
+func grpcAddr() string { return env("GRPC_ADDR", ":9090") }
+
+// serve runs the gRPC server and the HTTP health endpoint until SIGINT or
+// SIGTERM, then shuts both down gracefully.
 func serve(logger *slog.Logger) error {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		return errors.New("DATABASE_URL is not set")
+	}
+	pg, err := store.NewPostgres(ctx, databaseURL)
+	if err != nil {
+		return fmt.Errorf("connect to database: %w", err)
+	}
+	defer pg.Close()
+
+	grpcServer := transport.NewServer(service.New(pg), logger)
+	grpcListener, err := net.Listen("tcp", grpcAddr())
+	if err != nil {
+		return fmt.Errorf("listen on %s: %w", grpcAddr(), err)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintln(w, "ok")
 	})
-
-	srv := &http.Server{
+	httpServer := &http.Server{
 		Addr:              httpAddr(),
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() {
-		logger.Info("http server listening", "addr", srv.Addr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
+		logger.Info("grpc server listening", "addr", grpcAddr())
+		if err := grpcServer.Serve(grpcListener); err != nil {
+			errCh <- fmt.Errorf("grpc server: %w", err)
 		}
-		close(errCh)
+	}()
+	go func() {
+		logger.Info("http server listening", "addr", httpAddr())
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- fmt.Errorf("http server: %w", err)
+		}
 	}()
 
 	select {
 	case err := <-errCh:
-		return err // server failed to start, e.g. port in use
+		grpcServer.Stop()
+		_ = httpServer.Close()
+		return err
 	case <-ctx.Done():
 	}
 
 	logger.Info("shutting down")
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+
+	stopped := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop() // waits for in-flight calls
+		close(stopped)
+	}()
+	httpErr := httpServer.Shutdown(shutdownCtx)
+
+	select {
+	case <-stopped:
+	case <-shutdownCtx.Done():
+		grpcServer.Stop() // in-flight calls took too long
+	}
+	return httpErr
 }
 
 // migrate applies any pending migrations to the database at DATABASE_URL.
