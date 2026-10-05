@@ -61,8 +61,8 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: Integration tests (Postgres via testcontainers-go)
-        run: go test -race -count=1 -tags=integration ./internal/store/...
+      - name: Integration and reliability tests (Postgres via testcontainers-go)
+        run: go test -race -count=1 -tags=integration ./internal/store/... ./test/reliability/...
 
   build:
     needs: [integration]

@@ -18,6 +18,9 @@ import (
 var (
 	ErrInvalidArgument = errors.New("invalid argument")
 	ErrNotFound        = errors.New("not found")
+	// ErrUnavailable means storage cannot be reached right now; the same
+	// request may succeed if retried later.
+	ErrUnavailable = errors.New("unavailable")
 )
 
 // Limits applied by Service.

@@ -73,7 +73,7 @@ services:
       - gocache:/root/.cache/go-build
     environment:
       TEST_DATABASE_URL: postgres://test:test@postgres-test:5432/test?sslmode=disable
-    command: ["go", "test", "-race", "-tags=integration", "./..."]
+    command: ["go", "test", "-race", "-count=1", "-tags=integration", "./..."]
     depends_on:
       postgres-test: { condition: service_healthy }
 

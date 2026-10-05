@@ -120,6 +120,9 @@ func (s *resultsServer) toStatus(err error) error {
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, service.ErrNotFound):
 		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, service.ErrUnavailable):
+		s.logger.Warn("storage unavailable", "error", err)
+		return status.Error(codes.Unavailable, "service unavailable, try again later")
 	case errors.Is(err, context.Canceled):
 		return status.Error(codes.Canceled, "request cancelled")
 	case errors.Is(err, context.DeadlineExceeded):

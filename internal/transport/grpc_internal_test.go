@@ -25,6 +25,7 @@ func TestToStatus(t *testing.T) {
 	}{
 		{"invalid argument", fmt.Errorf("%w: suite is required", service.ErrInvalidArgument), codes.InvalidArgument, "invalid argument: suite is required"},
 		{"not found", fmt.Errorf("run %q: %w", "x", service.ErrNotFound), codes.NotFound, ""},
+		{"unavailable hides details", fmt.Errorf("get run: %w: %w", service.ErrUnavailable, errors.New("dial tcp 10.0.0.5:5432: connection refused")), codes.Unavailable, "service unavailable, try again later"},
 		{"cancelled", context.Canceled, codes.Canceled, ""},
 		{"deadline", fmt.Errorf("query: %w", context.DeadlineExceeded), codes.DeadlineExceeded, ""},
 		{"unexpected error hides details", errors.New("dial tcp 10.0.0.5:5432: password authentication failed"), codes.Internal, "internal error"},

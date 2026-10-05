@@ -5,6 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -54,7 +57,7 @@ func (p *Postgres) CreateRun(ctx context.Context, suite, branch, commitSHA strin
 		suite, branch, commitSHA,
 	).Scan(&run.ID, &run.StartedAt)
 	if err != nil {
-		return service.Run{}, fmt.Errorf("create run: %w", err)
+		return service.Run{}, wrap("create run", err)
 	}
 	run.StartedAt = run.StartedAt.UTC()
 	return run, nil
@@ -91,7 +94,7 @@ func (p *Postgres) GetRun(ctx context.Context, id string) (service.Run, error) {
 		return service.Run{}, fmt.Errorf("run %q: %w", id, service.ErrNotFound)
 	}
 	if err != nil {
-		return service.Run{}, fmt.Errorf("get run: %w", err)
+		return service.Run{}, wrap("get run", err)
 	}
 	return run, nil
 }
@@ -101,7 +104,7 @@ func (p *Postgres) GetRun(ctx context.Context, id string) (service.Run, error) {
 func (p *Postgres) AddResults(ctx context.Context, runID string, results []service.TestResult) error {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("begin: %w", err)
+		return wrap("begin", err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }() // no-op after commit
 
@@ -111,7 +114,7 @@ func (p *Postgres) AddResults(ctx context.Context, runID string, results []servi
 		return fmt.Errorf("run %q: %w", runID, service.ErrNotFound)
 	}
 	if err != nil {
-		return fmt.Errorf("check run: %w", err)
+		return wrap("check run", err)
 	}
 
 	if len(results) > 0 {
@@ -131,10 +134,13 @@ func (p *Postgres) AddResults(ctx context.Context, runID string, results []servi
 			return fmt.Errorf("run %q: %w", runID, service.ErrNotFound)
 		}
 		if err != nil {
-			return fmt.Errorf("insert results: %w", err)
+			return wrap("insert results", err)
 		}
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return wrap("commit", err)
+	}
+	return nil
 }
 
 // ListRuns implements service.Store.
@@ -147,7 +153,7 @@ func (p *Postgres) ListRuns(ctx context.Context, q service.ListRunsQuery) ([]ser
 		ORDER BY r.started_at DESC, r.id DESC
 		LIMIT $2 OFFSET $3`, q.Suite, q.Limit, q.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+		return nil, wrap("list runs", err)
 	}
 	defer rows.Close()
 
@@ -155,12 +161,12 @@ func (p *Postgres) ListRuns(ctx context.Context, q service.ListRunsQuery) ([]ser
 	for rows.Next() {
 		run, err := scanRun(rows)
 		if err != nil {
-			return nil, fmt.Errorf("list runs: %w", err)
+			return nil, wrap("list runs", err)
 		}
 		runs = append(runs, run)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("list runs: %w", err)
+		return nil, wrap("list runs", err)
 	}
 	return runs, nil
 }
@@ -178,3 +184,36 @@ func pgCode(err error) string {
 func isInvalidUUID(err error) bool { return pgCode(err) == "22P02" }
 
 func isForeignKeyViolation(err error) bool { return pgCode(err) == "23503" }
+
+// wrap adds the operation to err and marks failures to reach the database as
+// service.ErrUnavailable, so callers can tell "try again later" apart from a
+// real fault.
+func wrap(op string, err error) error {
+	if isUnavailable(err) {
+		return fmt.Errorf("%s: %w: %w", op, service.ErrUnavailable, err)
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
+// isUnavailable reports whether err means the database could not be reached
+// or dropped the connection, as opposed to rejecting the query itself.
+func isUnavailable(err error) bool {
+	if err == nil || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false // the caller gave up; not the database's fault
+	}
+	var connectErr *pgconn.ConnectError
+	if errors.As(err, &connectErr) {
+		return true // could not open a connection
+	}
+	switch code := pgCode(err); {
+	case strings.HasPrefix(code, "08"): // connection exception class
+		return true
+	case code == "57P01", code == "57P02", code == "57P03": // shutting down, crashed, starting up
+		return true
+	}
+	if pgconn.SafeToRetry(err) {
+		return true // failed before the query was sent
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+}

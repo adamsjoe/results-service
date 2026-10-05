@@ -27,7 +27,7 @@ type servers struct {
 }
 
 // startServers runs the gRPC server and REST gateway over store.
-func startServers(t *testing.T, store service.Store) servers {
+func startServers(t testing.TB, store service.Store) servers {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)

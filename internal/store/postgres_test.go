@@ -15,6 +15,7 @@ import (
 	"github.com/adamsjoe/results-service/internal/service"
 	"github.com/adamsjoe/results-service/internal/store"
 	"github.com/adamsjoe/results-service/internal/storetest"
+	"github.com/adamsjoe/results-service/internal/testpg"
 )
 
 var (
@@ -22,8 +23,7 @@ var (
 	admin       *pgxpool.Pool // direct SQL access for setup and assertions
 )
 
-// TestMain uses TEST_DATABASE_URL when set (as `make test` does); otherwise it
-// starts a Postgres container with testcontainers-go (as CI does).
+// TestMain gives this package its own database (see internal/testpg).
 func TestMain(m *testing.M) {
 	os.Exit(run(m))
 }
@@ -31,23 +31,19 @@ func TestMain(m *testing.M) {
 func run(m *testing.M) int {
 	ctx := context.Background()
 
-	databaseURL = os.Getenv("TEST_DATABASE_URL")
-	if databaseURL == "" {
-		url, stop, err := startPostgres(ctx)
-		if err != nil {
-			fmt.Fprintln(os.Stderr, "start postgres container:", err)
-			return 1
-		}
-		defer stop()
-		databaseURL = url
+	db, err := testpg.Start(ctx)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "start test database:", err)
+		return 1
 	}
+	defer db.Close()
+	databaseURL = db.URL
 
 	if _, err := store.Migrate(ctx, databaseURL); err != nil {
 		fmt.Fprintln(os.Stderr, "migrate:", err)
 		return 1
 	}
 
-	var err error
 	admin, err = pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "connect:", err)
