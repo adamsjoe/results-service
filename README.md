@@ -6,7 +6,7 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 5 of 10 complete — gRPC API live on port 9090, backed by Postgres, with end-to-end API tests over an in-process connection. See [Roadmap](#roadmap).
+> **Status:** Milestone 6 of 10 complete — the same API over gRPC (port 9090) and REST/JSON (port 8080), backed by Postgres; one shared test table holds both protocols to identical behaviour. See [Roadmap](#roadmap).
 
 ---
 
@@ -41,9 +41,18 @@ grpcurl -plaintext -d '{"run_id":"<id>"}' localhost:9090 results.v1.ResultsServi
 
 Proto3 JSON omits zero values, so counts appear only once results exist.
 
+Or the same API over REST — responses use snake_case keys and always include zero counts:
+
+```bash
+curl -s -X POST localhost:8080/v1/runs -d '{"suite":"checkout-e2e","branch":"main","commit_sha":"abc123"}'
+curl -s -X POST localhost:8080/v1/runs/<id>/results -d '{"results":[{"name":"login works","status":"STATUS_PASSED","duration_ms":120}]}'
+curl -s localhost:8080/v1/runs/<id>
+curl -s "localhost:8080/v1/runs?suite=checkout-e2e&page_size=5"
+```
+
 | Endpoint | Address | Status |
 | --- | --- | --- |
-| REST | `localhost:8080` | `/healthz` only so far |
+| REST | `localhost:8080` | Live under `/v1/`, plus `/healthz` |
 | gRPC | `localhost:9090` | Live, with server reflection |
 | Grafana | `localhost:3000` | Running, dashboards planned (milestone 9) |
 | Postgres | `localhost:5432` | Running |
@@ -91,7 +100,7 @@ The server binary has three subcommands so one image does every job:
 
 | Subcommand | Does |
 | --- | --- |
-| `serve` | Runs the gRPC server and the HTTP health endpoint (default); shuts down gracefully on SIGTERM |
+| `serve` | Runs the gRPC server and the REST gateway with `/healthz` (default); shuts down gracefully on SIGTERM, HTTP first |
 | `migrate` | Applies pending SQL migrations embedded in the binary |
 | `healthcheck` | Calls `/healthz`, exits non-zero on failure — used by Docker, as the distroless image has no shell or curl |
 
@@ -135,7 +144,7 @@ Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status
 | Contract ✅ | Both stores ([`internal/storetest`](internal/storetest)) | 14 behaviours every `Store` must meet, so the in-memory test double matches Postgres |
 | Integration ✅ | Real Postgres: testcontainers-go in CI, `postgres-test` under `make test` | Contract suite plus migrations, atomic batches, constraints, cascades |
 | gRPC API ✅ | Real gRPC server over bufconn ([`test/api`](test/api)) | Every RPC, status codes, streaming (incl. cancellation stores nothing), deadlines, no internal details leaked |
-| REST API | Running service over HTTP | Same behaviours via the gateway, HTTP status mapping |
+| REST API ✅ | Real gateway over HTTP ([`test/api`](test/api)) | Same behaviours as gRPC from one shared case table, plus JSON shape, bad bodies, error format, routing |
 | Contract | Proto file | `buf lint` and `buf breaking` against main |
 | Load | Docker Compose stack | k6 throughput and latency, both protocols |
 | Reliability | Running service | Timeouts, cancellation, database loss, graceful shutdown |
@@ -157,8 +166,8 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 · 
 | 3 | Service logic, test-first | ✅ Done |
 | 4 | Postgres store and migrations | ✅ Done |
 | 5 | gRPC server | ✅ Done |
-| 6 | REST gateway | ⬜ Next |
-| 7 | Reliability tests | ⬜ |
+| 6 | REST gateway | ✅ Done |
+| 7 | Reliability tests | ⬜ Next |
 | 8 | Load tests (k6) | ⬜ |
 | 9 | Grafana dashboard | ⬜ |
 | 10 | README: results and write-up | ⬜ |
