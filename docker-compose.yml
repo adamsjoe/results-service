@@ -78,7 +78,7 @@ services:
       postgres-test: { condition: service_healthy }
 
   k6:
-    image: grafana/k6
+    image: grafana/k6:2.3.0
     profiles: ["load"]
     volumes: ["./test/load:/scripts:ro"]
     environment:

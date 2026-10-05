@@ -145,13 +145,20 @@ func (p *Postgres) AddResults(ctx context.Context, runID string, results []servi
 
 // ListRuns implements service.Store.
 func (p *Postgres) ListRuns(ctx context.Context, q service.ListRunsQuery) ([]service.Run, error) {
+	// Pick the page of runs first (using the started_at index), then count
+	// results for just those runs. Joining first would count the results of
+	// every run in the table before discarding all but one page.
 	rows, err := p.pool.Query(ctx, `
 		SELECT `+runColumns+`
-		FROM runs r LEFT JOIN results res ON res.run_id = r.id
-		WHERE $1 = '' OR r.suite = $1
-		GROUP BY r.id
-		ORDER BY r.started_at DESC, r.id DESC
-		LIMIT $2 OFFSET $3`, q.Suite, q.Limit, q.Offset)
+		FROM (
+			SELECT * FROM runs
+			WHERE $1 = '' OR suite = $1
+			ORDER BY started_at DESC, id DESC
+			LIMIT $2 OFFSET $3
+		) r
+		LEFT JOIN results res ON res.run_id = r.id
+		GROUP BY r.id, r.suite, r.branch, r.commit_sha, r.started_at
+		ORDER BY r.started_at DESC, r.id DESC`, q.Suite, q.Limit, q.Offset)
 	if err != nil {
 		return nil, wrap("list runs", err)
 	}

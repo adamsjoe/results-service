@@ -67,7 +67,8 @@ curl -s "localhost:8080/v1/runs?suite=checkout-e2e&page_size=5"
 | `make logs` | Follow server logs |
 | `make psql` | SQL shell on the app database |
 | `make test` | Run all Go test layers in a container |
-| `make load` | Run the k6 baseline against the stack *(from milestone 8)* |
+| `make load` | Run a k6 script against the stack (`SCRIPT=baseline` by default; also `ramp`, `batch`, `soak`) |
+| `make seed` | Load 20,000 runs and 1,000,000 results, to load-test against a large table |
 | `make proto-deps` | Resolve proto dependencies and update `buf.lock` |
 | `make proto-lint` | Lint and format-check the proto files |
 | `make proto` | Regenerate Go code into `gen/` |
@@ -152,9 +153,42 @@ Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status
 
 ---
 
+## Load testing
+
+k6 scripts in [`test/load`](test/load) run the same workload over both protocols. One iteration is one simulated CI pipeline: create a run, post a batch of 50 results, read the run back, list recent runs.
+
+| Script | Shape | Shows |
+| --- | --- | --- |
+| `baseline` | 10 pipelines/s for 2 minutes per protocol, one after the other | Normal latency per endpoint; runs for 30 s per protocol in CI |
+| `ramp` | Rate rising to 400 pipelines/s on one protocol (`-e PROTOCOL=grpc`), stopping once over 5% of checks fail | Where throughput tops out |
+| `batch` | Batches of 10, 100 and 1,000 results per protocol | What payload size costs, gRPC versus JSON |
+| `soak` | Both protocols at once for 30 minutes | Slow leaks that short runs miss |
+
+```bash
+make up
+make seed                                    # optional: test against a large table
+make load                                    # baseline
+make load SCRIPT=ramp K6_ARGS="-e PROTOCOL=rest"
+```
+
+### Baseline
+
+`make load`, 10 pipelines/s per protocol for 2 minutes each, 50 results per batch; all checks passed, 0 failed requests. Measured with the full stack in Docker on a developer workstation, so treat the numbers as relative rather than absolute.
+
+| Endpoint | REST p95 | gRPC p95 | Threshold |
+| --- | --- | --- | --- |
+| CreateRun | 3.6 ms | 2.9 ms | < 20 ms |
+| RecordResults (50 results) | 6.5 ms | 6.0 ms | < 30 ms |
+| GetRun | 1.7 ms | 1.4 ms | < 10 ms |
+| ListRuns (20 runs) | 8.1 ms | 14.1 ms | < 50 ms |
+
+gRPC is slightly faster on every write and read except `ListRuns`, the largest response. k6 decodes gRPC responses dynamically through reflection, which is client-side work REST responses don't pay in these scripts, so that gap is not yet evidence of a server-side difference. Thresholds sit at about 5x these figures so that slower shared CI runners still pass while a real regression fails the build.
+
+---
+
 ## Tech stack
 
-Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 · golangci-lint · Docker Compose · Grafana · GitHub Actions
+Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 (v2) · golangci-lint · Docker Compose · Grafana · GitHub Actions
 
 ---
 
@@ -181,6 +215,7 @@ Problems hit during the build and how they were resolved. Newest first.
 
 | Milestone | Issue | Cause | Fix |
 | --- | --- | --- | --- |
+| 8 | `ListRuns` took ~550 ms with 20,000 runs and 1,000,000 results, and grew with the table (filtering by suite: ~225 ms) | The query joined every run to its results and counted them all, then sorted and kept one page — so each call did work proportional to the whole table | Select the page of runs first using the `started_at` index, then count results for those runs only: ~2 ms for both. Reproduce with `make seed` |
 | 7 | Graceful-shutdown test failed under `make test` only: `go build: error obtaining VCS status: exit status 128` | The test builds the server binary; Go stamps Git details into builds, but in the test container the bind-mounted repo is owned by another user, so Git refuses to read it | Test builds with `-buildvcs=false` |
 | 7 | A database outage reached clients as `Internal` / HTTP 500 | The store passed connection failures up unclassified, so they fell through to the catch-all mapping — telling clients "server bug" rather than "try again" | Store marks connection failures as `ErrUnavailable` → gRPC `Unavailable` / HTTP 503; covered by `TestDatabaseOutage_ReturnsUnavailableThenRecovers` |
 | 7 | Design change: database loss is simulated rather than done by stopping the container | Restarting a testcontainers container gives it a new host port, so the running service could never reconnect; and integration packages sharing one test database would break each other | `internal/testpg` gives each test package its own database; an outage is simulated by dropping every connection and refusing new ones, then allowing them again |

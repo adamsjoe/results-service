@@ -1,4 +1,8 @@
-.PHONY: up down reset logs psql test load proto proto-deps proto-lint
+.PHONY: up down reset logs psql seed test load proto proto-deps proto-lint
+
+# k6 script to run with `make load` (baseline, ramp, batch or soak) and extra k6 arguments
+SCRIPT ?= baseline
+K6_ARGS ?=
 
 # Build images and start the stack in the background
 up:
@@ -20,13 +24,17 @@ logs:
 psql:
 	docker compose exec postgres psql -U results
 
-# Run all Go test layers in a container (needs the test profile services, milestone 3+)
+# Load 20,000 runs and 1,000,000 results into the app database
+seed:
+	docker compose exec -T postgres psql -U results -f - < test/load/seed.sql
+
+# Run all Go test layers in a container, against the test database
 test:
 	docker compose --profile test run --rm tests
 
-# Run the k6 baseline against the running stack (needs the load profile service, milestone 8)
+# Run a k6 script against the running stack, e.g. make load SCRIPT=ramp K6_ARGS="-e PROTOCOL=grpc"
 load:
-	docker compose --profile load run --rm k6
+	docker compose --profile load run --rm k6 run $(K6_ARGS) /scripts/$(SCRIPT).js
 
 # Resolve proto dependencies (googleapis) and write buf.lock
 proto-deps:

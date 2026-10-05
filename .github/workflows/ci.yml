@@ -80,3 +80,21 @@ jobs:
         run: docker compose config --quiet
       - name: Build Docker image
         run: docker build -t results-server .
+
+  load-smoke:
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Start the stack
+        run: docker compose up -d --build server
+      - name: Wait for the server
+        run: timeout 120 sh -c 'until curl -sf localhost:8080/healthz; do sleep 2; done'
+      - name: k6 smoke load (30s per protocol)
+        run: docker compose --profile load run --rm k6 run -e DURATION=30s /scripts/baseline.js
+      - name: Server logs
+        if: always()
+        run: docker compose logs server
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
