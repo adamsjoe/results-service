@@ -1,4 +1,4 @@
-.PHONY: up down reset logs psql test load
+.PHONY: up down reset logs psql test load proto proto-deps proto-lint
 
 # Build images and start the stack in the background
 up:
@@ -27,3 +27,16 @@ test:
 # Run the k6 baseline against the running stack (needs the load profile service, milestone 8)
 load:
 	docker compose --profile load run --rm k6
+
+# Resolve proto dependencies (googleapis) and write buf.lock
+proto-deps:
+	buf dep update
+
+# Lint and format-check the proto files
+proto-lint:
+	buf lint
+	buf format --diff --exit-code
+
+# Generate Go code from the proto files into gen/
+proto:
+	buf generate

@@ -1,0 +1,23 @@
+version: v2
+clean: true
+managed:
+  enabled: true
+  disable:
+    # googleapis already sets its own go_package; leave it alone
+    - file_option: go_package
+      module: buf.build/googleapis/googleapis
+  override:
+    - file_option: go_package_prefix
+      value: github.com/adamsjoe/results-service/gen
+plugins:
+  - remote: buf.build/protocolbuffers/go
+    out: gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go
+    out: gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc-ecosystem/gateway
+    out: gen
+    opt: paths=source_relative
+inputs:
+  - directory: proto

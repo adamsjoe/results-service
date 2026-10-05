@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package results.v1;
+
+import "google/api/annotations.proto";
+import "google/protobuf/timestamp.proto";
+
+// ResultsService ingests automated test results and serves them back.
+service ResultsService {
+  // CreateRun starts a new test run.
+  rpc CreateRun(CreateRunRequest) returns (CreateRunResponse) {
+    option (google.api.http) = {
+      post: "/v1/runs"
+      body: "*"
+    };
+  }
+
+  // RecordResults adds a batch of up to 1,000 results to a run.
+  // Invalid results are rejected individually; valid ones in the same batch still land.
+  rpc RecordResults(RecordResultsRequest) returns (RecordResultsResponse) {
+    option (google.api.http) = {
+      post: "/v1/runs/{run_id}/results"
+      body: "*"
+    };
+  }
+
+  // StreamResults uploads results one message at a time. gRPC only.
+  rpc StreamResults(stream StreamResultsRequest) returns (StreamResultsResponse);
+
+  // GetRun returns a run with its pass, fail and skip counts.
+  rpc GetRun(GetRunRequest) returns (GetRunResponse) {
+    option (google.api.http) = {get: "/v1/runs/{run_id}"};
+  }
+
+  // ListRuns returns runs newest first, optionally filtered by suite.
+  rpc ListRuns(ListRunsRequest) returns (ListRunsResponse) {
+    option (google.api.http) = {get: "/v1/runs"};
+  }
+}
+
+// Status is the outcome of a single test.
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+  STATUS_PASSED = 1;
+  STATUS_FAILED = 2;
+  STATUS_SKIPPED = 3;
+}
+
+// Run is one execution of a test suite.
+message Run {
+  string id = 1;
+  // Suite name, e.g. "checkout-e2e".
+  string suite = 2;
+  string branch = 3;
+  string commit_sha = 4;
+  google.protobuf.Timestamp started_at = 5;
+  int32 passed = 6;
+  int32 failed = 7;
+  int32 skipped = 8;
+}
+
+// TestResult is the outcome of one test within a run.
+message TestResult {
+  string name = 1;
+  Status status = 2;
+  int64 duration_ms = 3;
+  // Empty unless status is STATUS_FAILED.
+  string error_message = 4;
+}
+
+message CreateRunRequest {
+  string suite = 1;
+  string branch = 2;
+  string commit_sha = 3;
+}
+
+message CreateRunResponse {
+  Run run = 1;
+}
+
+message RecordResultsRequest {
+  string run_id = 1;
+  repeated TestResult results = 2;
+}
+
+message RecordResultsResponse {
+  int32 accepted = 1;
+  int32 rejected = 2;
+}
+
+message StreamResultsRequest {
+  string run_id = 1;
+  TestResult result = 2;
+}
+
+message StreamResultsResponse {
+  int32 accepted = 1;
+  int32 rejected = 2;
+}
+
+message GetRunRequest {
+  string run_id = 1;
+}
+
+message GetRunResponse {
+  Run run = 1;
+}
+
+message ListRunsRequest {
+  // Optional filter by suite name.
+  string suite = 1;
+  // Maximum runs to return; values above 100 are capped at 100.
+  int32 page_size = 2;
+  string page_token = 3;
+}
+
+message ListRunsResponse {
+  repeated Run runs = 1;
+  string next_page_token = 2;
+}

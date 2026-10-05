@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write # lets buf-action comment on PRs
 
 jobs:
   lint:
@@ -21,8 +22,20 @@ jobs:
         with:
           version: v2.14
 
+  proto:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: buf lint, format and breaking-change check
+        uses: bufbuild/buf-action@v1
+        with:
+          version: 1.73.0
+          lint: true
+          format: true
+          push: false # breaking runs on pull requests against the base branch
+
   build:
-    needs: lint
+    needs: [lint, proto]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
