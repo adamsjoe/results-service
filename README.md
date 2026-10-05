@@ -171,6 +171,7 @@ Problems hit during the build and how they were resolved. Newest first.
 
 | Milestone | Issue | Cause | Fix |
 | --- | --- | --- | --- |
+| 6 | REST test found a known path with the wrong method (e.g. `DELETE /v1/runs`) returned 501 Not Implemented | grpc-gateway's default routing handler maps "method not allowed" to gRPC Unimplemented, which becomes HTTP 501 | Custom routing error handler in `internal/transport/gateway.go` returns 405; covered by `TestREST_RoutesAndMethods` |
 | 4 | Design change: goose dropped as the migration tool | goose pulls drivers for around ten databases (ClickHouse, MySQL, SQL Server, SQLite and more) into the module graph, for a project that only uses Postgres | Small embedded runner in `internal/store/migrate.go`: applies `migrations/*.sql` in order, records each in `schema_migrations`, holds an advisory lock |
 | 2 | Original API design would not pass buf `STANDARD` lint | `CreateRun`/`GetRun` shared a `Run` response, `StreamResults` streamed bare `TestResult`s, and enum values lacked the `STATUS_` prefix | Every RPC has its own `<Rpc>Request`/`<Rpc>Response`; enum values renamed `STATUS_PASSED` etc. |
 | 1 | golangci-lint found two `errcheck` issues in the first stub (caught before the first push) | golangci-lint v2 flags unchecked errors from `fmt.Fprintln` and `resp.Body.Close` | Errors explicitly discarded (`_, _ =` and a deferred closure) |

@@ -1,5 +1,6 @@
-// Package api_test drives the service end to end through its public API, over
-// an in-process connection, with the in-memory store behind it.
+// Package api_test drives the service end to end through its public APIs,
+// gRPC and REST, with the in-memory store behind them. The gRPC server runs on
+// an in-process connection; the REST gateway forwards to it, as in production.
 package api_test
 
 import (
@@ -7,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/http/httptest"
 	"testing"
 
 	"google.golang.org/grpc"
@@ -19,14 +21,13 @@ import (
 	"github.com/adamsjoe/results-service/internal/transport"
 )
 
-// newClient starts the gRPC server on an in-memory listener backed by an
-// empty in-memory store, and returns a client connected to it.
-func newClient(t *testing.T) resultsv1.ResultsServiceClient {
-	t.Helper()
-	return newClientWithStore(t, memstore.New())
+type servers struct {
+	grpc    resultsv1.ResultsServiceClient
+	restURL string
 }
 
-func newClientWithStore(t *testing.T, store service.Store) resultsv1.ResultsServiceClient {
+// startServers runs the gRPC server and REST gateway over store.
+func startServers(t *testing.T, store service.Store) servers {
 	t.Helper()
 
 	lis := bufconn.Listen(1 << 20)
@@ -45,5 +46,23 @@ func newClientWithStore(t *testing.T, store service.Store) resultsv1.ResultsServ
 	}
 	t.Cleanup(func() { _ = conn.Close() })
 
-	return resultsv1.NewResultsServiceClient(conn)
+	gw, err := transport.NewGateway(context.Background(), conn)
+	if err != nil {
+		t.Fatalf("gateway: %v", err)
+	}
+	httpSrv := httptest.NewServer(gw)
+	t.Cleanup(httpSrv.Close)
+
+	return servers{grpc: resultsv1.NewResultsServiceClient(conn), restURL: httpSrv.URL}
+}
+
+// newClient returns a gRPC client for gRPC-only tests.
+func newClient(t *testing.T) resultsv1.ResultsServiceClient {
+	t.Helper()
+	return startServers(t, memstore.New()).grpc
+}
+
+func newClientWithStore(t *testing.T, store service.Store) resultsv1.ResultsServiceClient {
+	t.Helper()
+	return startServers(t, store).grpc
 }

@@ -2,7 +2,7 @@
 //
 // Subcommands:
 //
-//	serve        start the gRPC and HTTP servers (default)
+//	serve        start the gRPC server and the REST gateway (default)
 //	healthcheck  call /healthz and exit 0 if healthy, 1 if not
 //	migrate      apply database migrations from DATABASE_URL
 package main
@@ -19,6 +19,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/adamsjoe/results-service/internal/service"
 	"github.com/adamsjoe/results-service/internal/store"
@@ -61,8 +64,18 @@ func env(key, fallback string) string {
 func httpAddr() string { return env("HTTP_ADDR", ":8080") }
 func grpcAddr() string { return env("GRPC_ADDR", ":9090") }
 
-// serve runs the gRPC server and the HTTP health endpoint until SIGINT or
-// SIGTERM, then shuts both down gracefully.
+// localAddr turns a listen address such as ":9090" into one this process can
+// dial, such as "localhost:9090".
+func localAddr(addr string) string {
+	if strings.HasPrefix(addr, ":") {
+		return "localhost" + addr
+	}
+	return addr
+}
+
+// serve runs the gRPC server, and an HTTP server carrying the REST gateway and
+// the health endpoint, until SIGINT or SIGTERM, then shuts both down
+// gracefully.
 func serve(logger *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -83,7 +96,19 @@ func serve(logger *slog.Logger) error {
 		return fmt.Errorf("listen on %s: %w", grpcAddr(), err)
 	}
 
+	// The gateway forwards REST requests to this process's own gRPC server.
+	gatewayConn, err := grpc.NewClient(localAddr(grpcAddr()), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("dial gRPC server for gateway: %w", err)
+	}
+	defer func() { _ = gatewayConn.Close() }()
+	gateway, err := transport.NewGateway(ctx, gatewayConn)
+	if err != nil {
+		return fmt.Errorf("create gateway: %w", err)
+	}
+
 	mux := http.NewServeMux()
+	mux.Handle("/v1/", gateway)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintln(w, "ok")
@@ -120,13 +145,14 @@ func serve(logger *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// HTTP first: REST requests in flight still need the gRPC server.
+	httpErr := httpServer.Shutdown(shutdownCtx)
+
 	stopped := make(chan struct{})
 	go func() {
 		grpcServer.GracefulStop() // waits for in-flight calls
 		close(stopped)
 	}()
-	httpErr := httpServer.Shutdown(shutdownCtx)
-
 	select {
 	case <-stopped:
 	case <-shutdownCtx.Done():
@@ -160,13 +186,8 @@ func migrate(logger *slog.Logger) error {
 // healthcheck calls the local /healthz endpoint. The distroless image has no
 // shell or curl, so Docker's healthcheck runs this subcommand instead.
 func healthcheck() error {
-	addr := httpAddr()
-	if strings.HasPrefix(addr, ":") {
-		addr = "localhost" + addr
-	}
-
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get("http://" + addr + "/healthz")
+	resp, err := client.Get("http://" + localAddr(httpAddr()) + "/healthz")
 	if err != nil {
 		return err
 	}
