@@ -4,7 +4,7 @@
 //
 //	serve        start the HTTP server (default)
 //	healthcheck  call /healthz and exit 0 if healthy, 1 if not
-//	migrate      run database migrations (stub until milestone 4)
+//	migrate      apply database migrations from DATABASE_URL
 package main
 
 import (
@@ -18,6 +18,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/adamsjoe/results-service/internal/store"
 )
 
 func main() {
@@ -35,7 +37,7 @@ func main() {
 	case "healthcheck":
 		err = healthcheck()
 	case "migrate":
-		logger.Info("migrate: no migrations yet")
+		err = migrate(logger)
 	default:
 		err = fmt.Errorf("unknown command %q (want serve, healthcheck or migrate)", cmd)
 	}
@@ -90,6 +92,28 @@ func serve(logger *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// migrate applies any pending migrations to the database at DATABASE_URL.
+func migrate(logger *slog.Logger) error {
+	url := os.Getenv("DATABASE_URL")
+	if url == "" {
+		return errors.New("DATABASE_URL is not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+
+	applied, err := store.Migrate(ctx, url)
+	if err != nil {
+		return err
+	}
+	if len(applied) == 0 {
+		logger.Info("database is up to date")
+	} else {
+		logger.Info("migrations applied", "versions", applied)
+	}
+	return nil
 }
 
 // healthcheck calls the local /healthz endpoint. The distroless image has no

@@ -21,6 +21,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14
+          args: --build-tags=integration
 
   proto:
     runs-on: ubuntu-latest
@@ -52,8 +53,19 @@ jobs:
           name: coverage
           path: coverage.out
 
-  build:
+  integration:
     needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Integration tests (Postgres via testcontainers-go)
+        run: go test -race -count=1 -tags=integration ./internal/store/...
+
+  build:
+    needs: [integration]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6

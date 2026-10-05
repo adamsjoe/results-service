@@ -74,7 +74,7 @@ The server binary has three subcommands so one image does every job:
 | Subcommand | Does |
 | --- | --- |
 | `serve` | Runs the server (default) |
-| `migrate` | Applies database migrations (stub until milestone 4) |
+| `migrate` | Applies pending SQL migrations embedded in the binary |
 | `healthcheck` | Calls `/healthz`, exits non-zero on failure — used by Docker, as the distroless image has no shell or curl |
 
 ---
@@ -125,7 +125,7 @@ Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status
 
 ## Tech stack
 
-Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · goose · testcontainers-go · k6 · golangci-lint · Docker Compose · Grafana · GitHub Actions
+Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 · golangci-lint · Docker Compose · Grafana · GitHub Actions
 
 ---
 
@@ -152,6 +152,7 @@ Problems hit during the build and how they were resolved. Newest first.
 
 | Milestone | Issue | Cause | Fix |
 | --- | --- | --- | --- |
+| 4 | Design change: goose dropped as the migration tool | goose pulls drivers for around ten databases (ClickHouse, MySQL, SQL Server, SQLite and more) into the module graph, for a project that only uses Postgres | Small embedded runner in `internal/store/migrate.go`: applies `migrations/*.sql` in order, records each in `schema_migrations`, holds an advisory lock |
 | 2 | Original API design would not pass buf `STANDARD` lint | `CreateRun`/`GetRun` shared a `Run` response, `StreamResults` streamed bare `TestResult`s, and enum values lacked the `STATUS_` prefix | Every RPC has its own `<Rpc>Request`/`<Rpc>Response`; enum values renamed `STATUS_PASSED` etc. |
 | 1 | golangci-lint found two `errcheck` issues in the first stub (caught before the first push) | golangci-lint v2 flags unchecked errors from `fmt.Fprintln` and `resp.Body.Close` | Errors explicitly discarded (`_, _ =` and a deferred closure) |
 | 1 | `make up` failed: `"/go.sum": not found` | `go.sum` only exists once a module has external dependencies; the stub is standard library only | Dockerfile copies `go.sum*`, making it optional |
