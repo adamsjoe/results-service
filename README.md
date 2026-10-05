@@ -6,7 +6,7 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 3 of 10 complete — service rules implemented test-first against an in-memory store; CI runs unit tests with the race detector and coverage. See [Roadmap](#roadmap).
+> **Status:** Milestone 4 of 10 complete — Postgres store and migrations, with a shared contract suite holding the in-memory and Postgres stores to the same behaviour; CI runs integration tests against real Postgres via testcontainers-go. See [Roadmap](#roadmap).
 
 ---
 
@@ -114,7 +114,8 @@ Errors are `ErrInvalidArgument` or `ErrNotFound`, mapped to gRPC and HTTP status
 | Layer | Runs against | Covers |
 | --- | --- | --- |
 | Unit (TDD) ✅ | In-memory store ([`internal/memstore`](internal/memstore)) | Validation, partial-batch acceptance, pagination rules — 93% coverage |
-| Integration | Real Postgres (testcontainers-go / test container) | Queries, constraints, migrations |
+| Contract ✅ | Both stores ([`internal/storetest`](internal/storetest)) | 14 behaviours every `Store` must meet, so the in-memory test double matches Postgres |
+| Integration ✅ | Real Postgres: testcontainers-go in CI, `postgres-test` under `make test` | Contract suite plus migrations, atomic batches, constraints, cascades |
 | gRPC API | Running service | Every RPC, status codes, streaming, deadlines |
 | REST API | Running service over HTTP | Same behaviours via the gateway, HTTP status mapping |
 | Contract | Proto file | `buf lint` and `buf breaking` against main |
@@ -136,8 +137,8 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 · 
 | 1 | Skeleton — stub server, Docker stack, CI | ✅ Done |
 | 2 | Proto and codegen with buf | ✅ Done |
 | 3 | Service logic, test-first | ✅ Done |
-| 4 | Postgres store and migrations | ⬜ Next |
-| 5 | gRPC server | ⬜ |
+| 4 | Postgres store and migrations | ✅ Done |
+| 5 | gRPC server | ⬜ Next |
 | 6 | REST gateway | ⬜ |
 | 7 | Reliability tests | ⬜ |
 | 8 | Load tests (k6) | ⬜ |
