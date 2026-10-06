@@ -8,13 +8,13 @@ K6_ARGS ?=
 up:
 	docker compose up -d --build
 
-# Stop the stack, keep the database volume
+# Stop every container in the project, including the test and load ones; keep the data
 down:
-	docker compose down
+	docker compose --profile test --profile load down
 
-# Stop the stack and delete the database volume
+# As down, and also delete the database volume
 reset:
-	docker compose down -v
+	docker compose --profile test --profile load down -v
 
 # Follow server logs
 logs:
