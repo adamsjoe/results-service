@@ -1,0 +1,641 @@
+{
+  "uid": "results-overview",
+  "title": "Test results",
+  "description": "Pass rates, failures and durations from results-service.",
+  "tags": [
+    "results-service"
+  ],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "suite",
+        "label": "Suite",
+        "type": "query",
+        "datasource": {
+          "uid": "results-postgres"
+        },
+        "query": "SELECT DISTINCT suite FROM runs ORDER BY 1",
+        "definition": "SELECT DISTINCT suite FROM runs ORDER BY 1",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": true,
+        "multi": true,
+        "allValue": "'__all'",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Runs",
+      "description": "Test runs started in the selected time range.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Runs\"\nFROM runs r\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Results",
+      "description": "Individual test results recorded against those runs.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Results\"\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Pass rate",
+      "description": "Passed \u00f7 (passed + failed). Skipped tests are left out.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT 100.0 * count(*) FILTER (WHERE res.status = 'PASSED')\n       / NULLIF(count(*) FILTER (WHERE res.status IN ('PASSED', 'FAILED')), 0) AS \"Pass rate\"\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 90
+              },
+              {
+                "color": "green",
+                "value": 98
+              }
+            ]
+          },
+          "decimals": 1
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Failed tests",
+      "description": "Failed results in the selected time range.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 18,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) AS \"Failed tests\"\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite)) AND res.status = 'FAILED'"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Pass rate over time, by suite",
+      "description": "Pass rate per time bucket for each suite.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(r.started_at, $__interval),\n       r.suite AS metric,\n       100.0 * count(*) FILTER (WHERE res.status = 'PASSED')\n       / NULLIF(count(*) FILTER (WHERE res.status IN ('PASSED', 'FAILED')), 0) AS value\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))\nGROUP BY 1, 2\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "auto",
+            "spanNulls": true
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Results recorded",
+      "description": "Results arriving per time bucket. Watch this while a k6 load test runs.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(res.recorded_at, $__interval),\n       count(*) AS \"Results recorded\"\nFROM results res JOIN runs r ON r.id = res.run_id\nWHERE $__timeFilter(res.recorded_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))\nGROUP BY 1\nORDER BY 1"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "table",
+      "title": "Suites",
+      "description": "Runs, failures and pass rate per suite, worst first.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 10,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT suite AS \"Suite\",\n       count(*) AS \"Runs\",\n       sum(failed) AS \"Failures\",\n       round(100.0 * sum(passed) / NULLIF(sum(passed + failed), 0), 1) AS \"Pass rate %\"\nFROM (\n  SELECT r.suite,\n         count(*) FILTER (WHERE res.status = 'PASSED') AS passed,\n         count(*) FILTER (WHERE res.status = 'FAILED') AS failed\n  FROM runs r JOIN results res ON res.run_id = r.id\n  WHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))\n  GROUP BY r.id, r.suite\n) per_run\nGROUP BY suite\nORDER BY \"Failures\" DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Pass rate %"
+            },
+            "properties": [
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 8,
+      "type": "table",
+      "title": "Most frequently failing tests",
+      "description": "Tests that failed most often in the time range, with their latest error.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 10,
+        "y": 12,
+        "w": 14,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT res.name AS \"Test\",\n       r.suite AS \"Suite\",\n       count(*) AS \"Failures\",\n       max(r.started_at) AS \"Last failed\",\n       (array_agg(res.error_message ORDER BY r.started_at DESC))[1] AS \"Last error\"\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite)) AND res.status = 'FAILED'\nGROUP BY res.name, r.suite\nORDER BY \"Failures\" DESC, \"Last failed\" DESC\nLIMIT 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Last failed"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 9,
+      "type": "table",
+      "title": "Slowest tests (p95)",
+      "description": "Tests with the highest 95th-percentile duration.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 21,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT res.name AS \"Test\",\n       r.suite AS \"Suite\",\n       count(*) AS \"Executions\",\n       round(avg(res.duration_ms)) AS \"Avg\",\n       percentile_cont(0.95) WITHIN GROUP (ORDER BY res.duration_ms) AS \"p95\"\nFROM runs r JOIN results res ON res.run_id = r.id\nWHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))\nGROUP BY res.name, r.suite\nORDER BY \"p95\" DESC\nLIMIT 10"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Avg"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "ms"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    },
+    {
+      "id": 10,
+      "type": "table",
+      "title": "Recent runs",
+      "description": "The 20 most recent runs and their counts.",
+      "datasource": {
+        "uid": "results-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 21,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "uid": "results-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT r.started_at AS \"Started\",\n       r.suite AS \"Suite\",\n       r.branch AS \"Branch\",\n       r.commit_sha AS \"Commit\",\n       count(res.id) FILTER (WHERE res.status = 'PASSED') AS \"Passed\",\n       count(res.id) FILTER (WHERE res.status = 'FAILED') AS \"Failed\",\n       count(res.id) FILTER (WHERE res.status = 'SKIPPED') AS \"Skipped\"\nFROM (\n  SELECT * FROM runs r\n  WHERE $__timeFilter(r.started_at) AND ('__all' IN ($suite) OR r.suite IN ($suite))\n  ORDER BY r.started_at DESC, r.id DESC\n  LIMIT 20\n) r\nLEFT JOIN results res ON res.run_id = r.id\nGROUP BY r.id, r.started_at, r.suite, r.branch, r.commit_sha\nORDER BY r.started_at DESC"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "minWidth": 60,
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm"
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+# Postgres data source for the results dashboard. Credentials match the local
+# Docker Compose stack only.
+apiVersion: 1
+
+datasources:
+  - name: Results
+    uid: results-postgres
+    type: postgres
+    url: postgres:5432
+    user: results
+    secureJsonData:
+      password: results
+    jsonData:
+      database: results
+      sslmode: disable
+      postgresVersion: 1700
+      timescaledb: false
+    isDefault: true
+    editable: false
