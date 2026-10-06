@@ -6,7 +6,7 @@ A Go backend that ingests automated test results over **gRPC** and **REST**, sto
 
 The service is the vehicle; the testing is the point. Every layer is covered: unit tests written test-first, integration tests against real Postgres, API tests over both protocols, k6 load tests and deliberate reliability tests, all running in CI.
 
-> **Status:** Milestone 7 of 10 complete — reliability proven against real Postgres: database outages return Unavailable/503 and recover without a restart, abandoned writes leave nothing behind, SIGTERM drains in-flight requests, and fuzzing finds no input that causes a 5xx. See [Roadmap](#roadmap).
+> **Status:** Milestone 9 of 10 complete — gRPC and REST APIs on Postgres, tested at every layer from unit to load, with a Grafana dashboard provisioned on `make up`. See [Roadmap](#roadmap).
 
 ---
 
@@ -54,7 +54,7 @@ curl -s "localhost:8080/v1/runs?suite=checkout-e2e&page_size=5"
 | --- | --- | --- |
 | REST | `localhost:8080` | Live under `/v1/`, plus `/healthz` |
 | gRPC | `localhost:9090` | Live, with server reflection |
-| Grafana | `localhost:3000` | Running, dashboards planned (milestone 9) |
+| Grafana | `localhost:3000` | **Test results** dashboard as the home page |
 | Postgres | `localhost:5432` | Running |
 
 ### Make targets
@@ -186,6 +186,24 @@ gRPC is slightly faster on every write and read except `ListRuns`, the largest r
 
 ---
 
+## Dashboard
+
+Grafana starts with the stack and opens on a **Test results** dashboard, provisioned from [`deploy/grafana`](deploy/grafana) and read straight from Postgres. Nothing to configure, and edits made in the UI are not saved — the repo is the source of truth.
+
+| Panel | Shows |
+| --- | --- |
+| Runs, Results, Pass rate, Failed tests | Headline numbers for the time range; pass rate is passed ÷ (passed + failed) |
+| Pass rate over time, by suite | Trend per suite |
+| Results recorded | Results arriving over time — watch it during `make load` |
+| Suites | Runs, failures and pass rate per suite, worst first |
+| Most frequently failing tests | With the latest error message |
+| Slowest tests (p95) | Highest 95th-percentile duration |
+| Recent runs | The latest 20 runs with their counts |
+
+Filter by suite at the top. The k6 workload posts synthetic results in which one in five fails and one in five is skipped, so a load test shows a 75% pass rate by design.
+
+---
+
 ## Tech stack
 
 Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 (v2) · golangci-lint · Docker Compose · Grafana · GitHub Actions
@@ -203,9 +221,9 @@ Go · grpc-go · grpc-gateway v2 · buf · pgx v5 · testcontainers-go · k6 (v2
 | 5 | gRPC server | ✅ Done |
 | 6 | REST gateway | ✅ Done |
 | 7 | Reliability tests | ✅ Done |
-| 8 | Load tests (k6) | ⬜ Next |
-| 9 | Grafana dashboard | ⬜ |
-| 10 | README: results and write-up | ⬜ |
+| 8 | Load tests (k6) | ✅ Done |
+| 9 | Grafana dashboard | ✅ Done |
+| 10 | README: results and write-up | ⬜ Next |
 
 ---
 
